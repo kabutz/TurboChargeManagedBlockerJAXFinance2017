@@ -1,1 +1,0 @@
-# TurboChargeManagedBlockerJAXFinance2017
