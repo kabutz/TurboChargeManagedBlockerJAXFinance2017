@@ -12,9 +12,13 @@ public class Fibonacci {
         cache.put(1, BigInteger.ONE);
         return f(n, cache);
     }
+
+    private final BigInteger RESERVED =
+        BigInteger.valueOf(-1000);
+
     public BigInteger f(int n,
             Map<Integer, BigInteger> cache) {
-        BigInteger result = cache.get(n);
+        BigInteger result = cache.putIfAbsent(n, RESERVED);
         if (result == null) {
             int half = (n + 1) / 2;
 
@@ -42,7 +46,20 @@ public class Fibonacci {
                 if (time > 50)
                     System.out.println("fib(" + n + ") time = " + time + "ms");
             }
-            cache.put(n, result);
+            synchronized (RESERVED) {
+                cache.put(n, result);
+                RESERVED.notifyAll();
+            }
+        } else if (result == RESERVED) {
+            synchronized (RESERVED) {
+                while((result = cache.get(n)) == RESERVED) {
+                    try {
+                        RESERVED.wait();
+                    } catch (InterruptedException e) {
+                        throw new CancellationException("interrupted");
+                    }
+                }
+            }
         }
         return result;
     }
