@@ -6,34 +6,44 @@ import java.util.concurrent.*;
 // demo 1 - 46370
 public class Fibonacci {
     public BigInteger f(int n) {
-        if (n == 0) return BigInteger.ZERO;
-        if (n == 1) return BigInteger.ONE;
+        Map<Integer, BigInteger> cache =
+            new ConcurrentHashMap<>();
+        cache.put(0, BigInteger.ZERO);
+        cache.put(1, BigInteger.ONE);
+        return f(n, cache);
+    }
+    public BigInteger f(int n,
+            Map<Integer, BigInteger> cache) {
+        BigInteger result = cache.get(n);
+        if (result == null) {
+            int half = (n + 1) / 2;
 
-        int half = (n + 1) / 2;
+            RecursiveTask<BigInteger> f0_task = new RecursiveTask<BigInteger>() {
+                protected BigInteger compute() {
+                    return f(half - 1, cache);
+                }
+            };
+            f0_task.fork();
 
-        RecursiveTask<BigInteger> f0_task = new RecursiveTask<BigInteger>() {
-            protected BigInteger compute() {
-                return f(half-1);
+            BigInteger f1 = f(half, cache);
+            BigInteger f0 = f0_task.join();
+
+            long time = n < 100_000 ? 0 : System.currentTimeMillis();
+            try {
+                if (n % 2 == 1) {
+                    result = f0.multiply(f0)
+                        .add(f1.multiply(f1));
+                } else {
+                    result = f0.shiftLeft(1).add(f1)
+                        .multiply(f1);
+                }
+            } finally {
+                time = n < 100_000 ? 0 : (System.currentTimeMillis() - time);
+                if (time > 50)
+                    System.out.println("fib(" + n + ") time = " + time + "ms");
             }
-        };
-        f0_task.fork();
-
-        BigInteger f1 = f(half);
-        BigInteger f0 = f0_task.join();
-
-        long time = n < 100_000 ? 0 : System.currentTimeMillis();
-        try {
-            if (n % 2 == 1) {
-                return f0.multiply(f0)
-                    .add(f1.multiply(f1));
-            } else {
-                return f0.shiftLeft(1).add(f1)
-                    .multiply(f1);
-            }
-        } finally {
-            time = n < 100_000 ? 0 : (System.currentTimeMillis() - time);
-            if (time > 50)
-                System.out.println("fib(" + n + ") time = " + time + "ms");
+            cache.put(n, result);
         }
+        return result;
     }
 }
