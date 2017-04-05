@@ -3,6 +3,7 @@ package eu.javaspecialists.performance.managedblocker;
 import java.math.*;
 import java.util.*;
 import java.util.concurrent.*;
+
 // demo 1 - 46370
 public class Fibonacci {
     public BigInteger f(int n) {
@@ -16,8 +17,33 @@ public class Fibonacci {
     private final BigInteger RESERVED =
         BigInteger.valueOf(-1000);
 
+    private class FibonacciReservedBlocker implements
+        ForkJoinPool.ManagedBlocker {
+        BigInteger result;
+        private final int n;
+        private final Map<Integer, BigInteger> cache;
+
+        public FibonacciReservedBlocker(int n, Map<Integer, BigInteger> cache) {
+            this.n = n;
+            this.cache = cache;
+        }
+
+        public boolean isReleasable() {
+            return (result = cache.get(n)) != RESERVED;
+        }
+
+        public boolean block() throws InterruptedException {
+            synchronized (RESERVED) {
+                while (!isReleasable()) {
+                    RESERVED.wait();
+                }
+            }
+            return true;
+        }
+    }
+
     public BigInteger f(int n,
-            Map<Integer, BigInteger> cache) {
+                        Map<Integer, BigInteger> cache) {
         BigInteger result = cache.putIfAbsent(n, RESERVED);
         if (result == null) {
             int half = (n + 1) / 2;
@@ -51,14 +77,13 @@ public class Fibonacci {
                 RESERVED.notifyAll();
             }
         } else if (result == RESERVED) {
-            synchronized (RESERVED) {
-                while((result = cache.get(n)) == RESERVED) {
-                    try {
-                        RESERVED.wait();
-                    } catch (InterruptedException e) {
-                        throw new CancellationException("interrupted");
-                    }
-                }
+            try {
+                FibonacciReservedBlocker blocker =
+                    new FibonacciReservedBlocker(n, cache);
+                ForkJoinPool.managedBlock(blocker);
+                result = blocker.result;
+            } catch (InterruptedException e) {
+                throw new CancellationException("interrupted");
             }
         }
         return result;
